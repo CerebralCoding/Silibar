@@ -1,0 +1,4 @@
+/target/
+/.codebase-memory/
+.DS_Store
+*.rs.bk

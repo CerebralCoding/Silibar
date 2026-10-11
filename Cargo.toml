@@ -1,0 +1,27 @@
+[package]
+name = "silibar"
+version = "0.1.0"
+authors = ["Sebastian Christiansen"]
+edition = "2024"
+description = "An Apple Silicon metrics and tab bar for Zellij, powered by macmon"
+license = "MIT"
+readme = "README.md"
+keywords = ["zellij", "apple-silicon", "macos", "monitoring", "status-bar"]
+categories = ["command-line-utilities", "visualization"]
+autobins = false
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+
+[dependencies]
+colored = "3.0.0"
+regex = "1.9.4"
+serde = { version = "1.0", features = ["derive", "std"] }
+serde_json = { version = "1.0", features = ["std"] }
+zellij-tile = "0.45.0"
+
+[[bin]]
+name = "silibar"
+path = "src/bin/plugin.rs"
