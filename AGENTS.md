@@ -74,8 +74,12 @@ name to the installer. Preserve other layouts, plugins, and configuration.
 ./scripts/install.sh
 ```
 
-This adds the WASM target, builds with the locked dependencies, and installs the
-layout and content-addressed plugin. Use its printed paths and launch command.
+This adds the WASM target, builds with the locked dependencies, installs the
+layout and content-addressed plugin, and pre-approves `WebAccess`,
+`ReadApplicationState`, and `ChangeApplicationState` for that build. Other
+plugins' permissions are preserved. If Zellij uses a custom permission cache,
+set `ZELLIJ_PERMISSION_CACHE` to its `permissions.kdl` path before installation.
+Use the installer's printed paths and launch command.
 Only change `default_layout` if the user requested it; update that setting in
 the existing `config.kdl` without replacing the file or adding a duplicate key.
 
@@ -83,17 +87,18 @@ the existing `config.kdl` without replacing the file or adding a duplicate key.
 
 Confirm that the printed layout and WASM files exist and are nonempty, that the
 layout references the installed WASM and correct metrics URL, and that the
-metrics endpoint still returns JSON. Run `zellij setup --check` again if you
-changed the configuration.
+printed permission cache grants the three permissions to the installed plugin.
+Check that the metrics endpoint still returns JSON. Run `zellij setup --check`
+again if you changed the configuration.
 
 Launch the printed command in an interactive terminal outside an existing Zellij
 session. Do not kill or restart the user's sessions; existing sessions keep
-their old layouts. On first launch, the user must grant `WebAccess`,
-`ReadApplicationState`, and `ChangeApplicationState` in Zellij. Do not edit its
-permission cache to bypass this prompt.
+their old layouts. No permission prompt is expected for this build. If one
+appears, check that the layout's plugin path and Zellij's permission cache match
+the installer's output, then rerun the installer with the correct paths.
 
 Confirm that tabs and updating CPU, GPU, memory, power, and temperature metrics
 appear. If an interactive launch is unavailable, report the completed file and
-endpoint checks and give the user the exact launch command and permission step;
+endpoint checks and give the user the exact launch command;
 do not claim that the UI was verified. Finish with the installed paths, whether
 the default layout changed, and any remaining user action.

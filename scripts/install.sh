@@ -3,8 +3,9 @@ set -euo pipefail
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   echo "Usage: ./scripts/install.sh [layout-name]"
-  echo "Build and install Silibar. The default layout name is silibar."
+  echo "Build, install, and approve Silibar's plugin permissions. The default layout name is silibar."
   echo "Override SILIBAR_METRICS_URL, ZELLIJ_LAYOUT_DIR, or ZELLIJ_PLUGIN_DIR as needed."
+  echo "Override ZELLIJ_PERMISSION_CACHE to use a custom permissions.kdl path."
   exit 0
 fi
 
@@ -15,6 +16,7 @@ layout_dir="${ZELLIJ_LAYOUT_DIR:-$config_dir/layouts}"
 plugin_dir="${ZELLIJ_PLUGIN_DIR:-$config_dir/plugins}"
 wasm_path="$repo_root/target/wasm32-wasip1/release/silibar.wasm"
 metrics_url="${SILIBAR_METRICS_URL:-http://127.0.0.1:9090/json}"
+permission_cache="${ZELLIJ_PERMISSION_CACHE:-$HOME/Library/Caches/org.Zellij-Contributors.Zellij/permissions.kdl}"
 
 if [[ $# -gt 1 || ! "$layout_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
   echo "Use one layout name containing only letters, numbers, underscores, or hyphens." >&2
@@ -58,6 +60,9 @@ plugin_dir="$(cd "$plugin_dir" && pwd)"
 installed_wasm_path="$plugin_dir/silibar-${wasm_hash:0:16}.wasm"
 cp "$wasm_path" "$installed_wasm_path"
 
+cargo run --locked --quiet --target-dir "$repo_root/target" --target aarch64-apple-darwin \
+  --bin silibar-permissions -- "$permission_cache" "$installed_wasm_path"
+
 kdl_wasm_path="${installed_wasm_path//\\/\\\\}"
 kdl_wasm_path="${kdl_wasm_path//\"/\\\"}"
 kdl_metrics_url="${metrics_url//\\/\\\\}"
@@ -93,6 +98,9 @@ Layout written to:
 Content-addressed plugin installed at:
   $installed_wasm_path
 
+Plugin permissions approved in:
+  $permission_cache
+
 Launch with:
   zellij --layout "$layout_path"
 
@@ -103,6 +111,6 @@ To make it the default for new Zellij sessions, add this to:
 
 Existing sessions keep their old layout; start a new session to use Silibar.
 
-When Zellij asks for plugin permissions, allow WebAccess,
-ReadApplicationState, and ChangeApplicationState.
+WebAccess, ReadApplicationState, and ChangeApplicationState are pre-approved
+for this plugin build.
 EOF

@@ -17,11 +17,20 @@ codegen-units = 1
 
 [dependencies]
 colored = "3.0.0"
+kdl = "4.7.1"
 regex = "1.9.4"
 serde = { version = "1.0", features = ["derive", "std"] }
 serde_json = { version = "1.0", features = ["std"] }
+tempfile = { version = "3.27.0", default-features = false }
 zellij-tile = "0.45.0"
+
+[dev-dependencies]
+zellij-utils = "0.45.0"
 
 [[bin]]
 name = "silibar"
 path = "src/bin/plugin.rs"
+
+[[bin]]
+name = "silibar-permissions"
+path = "src/bin/permissions.rs"

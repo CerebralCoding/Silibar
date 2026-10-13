@@ -29,7 +29,7 @@ Give any coding agent with terminal access to your Mac this prompt:
 > Install Silibar on this Mac by following https://github.com/CerebralCoding/Silibar/blob/main/AGENTS.md. Complete the setup and verify it, preserving my existing Zellij configuration.
 
 The [agent installation guide](AGENTS.md) covers dependencies, installation, and
-verification. You will need to approve Zellij's plugin permissions on first launch.
+verification. The installer pre-approves Silibar's Zellij plugin permissions.
 
 ### Manually
 
@@ -52,11 +52,14 @@ The installer adds Rust's `wasm32-wasip1` target, builds the plugin, and writes
 `~/.config/zellij/plugins/`. It respects `XDG_CONFIG_HOME`. Reinstalling updates
 the layout; the content hash prevents Zellij from reusing an older cached build.
 
-Allow these permissions when Zellij prompts:
+The installer pre-approves these permissions for the installed plugin build:
 
 - `WebAccess` to read macmon's `/json` endpoint.
 - `ReadApplicationState` to display sessions, tabs, and input modes.
 - `ChangeApplicationState` to switch tabs and exit when the last selectable pane closes.
+
+Other plugins' cached permissions are preserved. Reinstalling approves the new
+content-addressed build automatically.
 
 To use Silibar for new sessions, add `default_layout "silibar"` to your Zellij
 `config.kdl`. Existing sessions keep their current layout.
@@ -71,6 +74,8 @@ SILIBAR_METRICS_URL=http://127.0.0.1:9091/json ./scripts/install.sh my-status
 
 `ZELLIJ_LAYOUT_DIR` and `ZELLIJ_PLUGIN_DIR` override the installation directories.
 The installer prints an absolute launch command for custom locations.
+`ZELLIJ_PERMISSION_CACHE` overrides the permission cache path, which defaults to
+`~/Library/Caches/org.Zellij-Contributors.Zellij/permissions.kdl` on macOS.
 
 For an existing layout, add a one-line pane using the installed WASM path:
 

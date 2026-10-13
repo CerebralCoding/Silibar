@@ -1715,10 +1715,13 @@ name = "silibar"
 version = "0.1.0"
 dependencies = [
  "colored",
+ "kdl",
  "regex",
  "serde",
  "serde_json",
+ "tempfile",
  "zellij-tile",
+ "zellij-utils",
 ]
 
 [[package]]
