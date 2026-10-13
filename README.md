@@ -22,6 +22,17 @@ Zellij, so sessions share one macmon process. It requires no administrator acces
 Requires an Apple Silicon Mac, Zellij 0.45.x, macmon 0.9.0 or newer with
 `serve --host`, and a current stable [Rust toolchain](https://rustup.rs).
 
+### With an agent
+
+Give any coding agent with terminal access to your Mac this prompt:
+
+> Install Silibar on this Mac by following https://github.com/CerebralCoding/Silibar/blob/main/AGENTS.md. Complete the setup and verify it, preserving my existing Zellij configuration.
+
+The [agent installation guide](AGENTS.md) covers dependencies, installation, and
+verification. You will need to approve Zellij's plugin permissions on first launch.
+
+### Manually
+
 Install the runtime dependencies and start macmon as a localhost-only LaunchAgent:
 
 ```bash
