@@ -97,7 +97,7 @@ their old layouts. No permission prompt is expected for this build. If one
 appears, check that the layout's plugin path and Zellij's permission cache match
 the installer's output, then rerun the installer with the correct paths.
 
-Confirm that tabs and updating CPU, GPU, memory, power, and temperature metrics
+Confirm that tabs and updating CPU/GPU usage and temperatures, memory, and power
 appear. If an interactive launch is unavailable, report the completed file and
 endpoint checks and give the user the exact launch command;
 do not claim that the UI was verified. Finish with the installed paths, whether

@@ -50,8 +50,8 @@ struct MacmonSnapshot {
 
 #[derive(Default, Deserialize)]
 struct MacmonTemp {
-    cpu_temp_avg: f32,
-    gpu_temp_avg: f32,
+    cpu_temp_avg: Option<f32>,
+    gpu_temp_avg: Option<f32>,
 }
 
 #[derive(Default, Deserialize)]
@@ -86,8 +86,8 @@ impl From<MacmonSnapshot> for SystemMessage {
             ane_power_watts: snapshot.ane_power.unwrap_or_default(),
             total_power_watts: snapshot.all_power.unwrap_or_default(),
             system_power_watts: snapshot.sys_power.unwrap_or_default(),
-            cpu_temp_celsius: temp.cpu_temp_avg,
-            gpu_temp_celsius: temp.gpu_temp_avg,
+            cpu_temp_celsius: temp.cpu_temp_avg.unwrap_or_default(),
+            gpu_temp_celsius: temp.gpu_temp_avg.unwrap_or_default(),
             fans: snapshot.fans.unwrap_or_default(),
             chip_name: snapshot.soc.map(|soc| soc.chip_name).unwrap_or_default(),
         }
@@ -105,6 +105,14 @@ fn strip_ansi_codes(s: &str) -> String {
 
 fn metric_value(text: &str) -> colored::ColoredString {
     text.bright_green().on_black()
+}
+
+fn temperature_value(celsius: f32) -> String {
+    if celsius.is_finite() && celsius > 0.0 {
+        format!("{celsius:>3.0}C")
+    } else {
+        " --C".to_owned()
+    }
 }
 
 fn metric_segment(label: &str, value: &str, compact: bool) -> String {
@@ -520,11 +528,17 @@ impl State {
         let mut segments: Vec<String> = Vec::new();
 
         let cpu_pct = self.stats.cpu_usage as f64;
-        let cpu_value = format!("{cpu_pct:>3.0}%");
+        let cpu_value = format!(
+            "{cpu_pct:>3.0}% {}",
+            temperature_value(self.stats.cpu_temp_celsius)
+        );
         segments.push(metric_segment("CPU:", &cpu_value, compact));
 
         let gpu_pct = self.stats.gpu_usage as f64;
-        let gpu_value = format!("{gpu_pct:>3.0}%");
+        let gpu_value = format!(
+            "{gpu_pct:>3.0}% {}",
+            temperature_value(self.stats.gpu_temp_celsius)
+        );
         segments.push(metric_segment("GPU:", &gpu_value, compact));
 
         let mem_used_gb = self.stats.mem_used as f64 / 1024.0 / 1024.0 / 1024.0;
@@ -539,10 +553,6 @@ impl State {
         };
         let power_value = format!("{total_power:>4.1}W");
         segments.push(metric_segment("PWR:", &power_value, compact));
-
-        let temp = self.stats.cpu_temp_celsius as f64;
-        let temp_value = format!("{temp:>2.0}C");
-        segments.push(metric_segment("TEMP:", &temp_value, compact));
 
         segments
     }
@@ -594,6 +604,7 @@ mod tests {
                 mem_total: 16 * 1024 * 1024 * 1024,
                 system_power_watts: 12.3,
                 cpu_temp_celsius: 55.0,
+                gpu_temp_celsius: 62.0,
                 ..Default::default()
             },
             ..Default::default()
@@ -605,14 +616,14 @@ mod tests {
         let metrics = strip_ansi_codes(&metrics_state().metrics_text(121));
         assert_eq!(
             metrics,
-            "CPU:  42% | GPU:  73% | RAM:  8.0/16G | PWR: 12.3W | TEMP: 55C"
+            "CPU:  42%  55C | GPU:  73%  62C | RAM:  8.0/16G | PWR: 12.3W"
         );
     }
 
     #[test]
     fn narrow_metrics_automatically_compact() {
         let metrics = strip_ansi_codes(&metrics_state().metrics_text(96));
-        assert_eq!(metrics, " 42% |  73% |  8.0/16G | 12.3W | 55C");
+        assert_eq!(metrics, " 42%  55C |  73%  62C |  8.0/16G | 12.3W");
     }
 
     #[test]
@@ -623,14 +634,20 @@ mod tests {
         assert_eq!(strip_ansi_codes(&state.metrics_text(121)), regular);
         assert_eq!(
             strip_ansi_codes(&state.metrics_text(120)),
-            " 42% |  73% |  8.0/16G | 12.3W | 55C"
+            " 42%  55C |  73%  62C |  8.0/16G | 12.3W"
         );
     }
 
     #[test]
     fn compact_metrics_fit_whole_segments() {
-        let metrics = strip_ansi_codes(&metrics_state().metrics_text(11));
-        assert_eq!(metrics, " 42% |  73%");
+        let state = metrics_state();
+        assert_eq!(strip_ansi_codes(&state.metrics_text(8)), "");
+        assert_eq!(strip_ansi_codes(&state.metrics_text(9)), " 42%  55C");
+        assert_eq!(strip_ansi_codes(&state.metrics_text(20)), " 42%  55C");
+        assert_eq!(
+            strip_ansi_codes(&state.metrics_text(21)),
+            " 42%  55C |  73%  62C"
+        );
     }
 
     #[test]
@@ -646,7 +663,7 @@ mod tests {
     fn combined_bar_uses_compact_metrics_on_mobile_widths() {
         let bar = strip_ansi_codes(&metrics_state().combined_bar_text(96));
 
-        assert!(bar.ends_with(" 42% |  73% |  8.0/16G | 12.3W | 55C"));
+        assert!(bar.ends_with(" 42%  55C |  73%  62C |  8.0/16G | 12.3W"));
         assert!(!bar.contains("CPU:"));
     }
 
@@ -658,20 +675,59 @@ mod tests {
         low.stats.mem_used = 9 * 1024 * 1024 * 1024;
         low.stats.system_power_watts = 9.9;
         low.stats.cpu_temp_celsius = 9.0;
+        low.stats.gpu_temp_celsius = 9.0;
 
         let mut high = metrics_state();
-        high.stats.cpu_usage = 10.0;
-        high.stats.gpu_usage = 10.0;
+        high.stats.cpu_usage = 100.0;
+        high.stats.gpu_usage = 100.0;
         high.stats.mem_used = 10 * 1024 * 1024 * 1024;
         high.stats.system_power_watts = 10.0;
-        high.stats.cpu_temp_celsius = 10.0;
+        high.stats.cpu_temp_celsius = 100.0;
+        high.stats.gpu_temp_celsius = 100.0;
 
         let low_metrics = strip_ansi_codes(&low.metrics_text(96));
         let high_metrics = strip_ansi_codes(&high.metrics_text(96));
 
         assert_eq!(low_metrics.chars().count(), high_metrics.chars().count());
-        assert_eq!(low_metrics, "  9% |   9% |  9.0/16G |  9.9W |  9C");
-        assert_eq!(high_metrics, " 10% |  10% | 10.0/16G | 10.0W | 10C");
+        assert_eq!(low_metrics, "  9%   9C |   9%   9C |  9.0/16G |  9.9W");
+        assert_eq!(high_metrics, "100% 100C | 100% 100C | 10.0/16G | 10.0W");
+    }
+
+    #[test]
+    fn macmon_temperatures_render_independently_when_sensors_are_missing() {
+        colored::control::set_override(true);
+        for (json, expected) in [
+            (
+                r#"{"temp":{"cpu_temp_avg":55.0,"gpu_temp_avg":62.0}}"#,
+                "  0%  55C |   0%  62C",
+            ),
+            (r#"{"temp":{"cpu_temp_avg":55.0}}"#, "  0%  55C |   0%  --C"),
+            (
+                r#"{"temp":{"cpu_temp_avg":null,"gpu_temp_avg":62.0}}"#,
+                "  0%  --C |   0%  62C",
+            ),
+            (r#"{}"#, "  0%  --C |   0%  --C"),
+        ] {
+            let snapshot: MacmonSnapshot = serde_json::from_str(json).unwrap();
+            let state = State {
+                stats: snapshot.into(),
+                ..Default::default()
+            };
+            assert_eq!(strip_ansi_codes(&state.metrics_text(21)), expected);
+        }
+    }
+
+    #[test]
+    fn unavailable_temperatures_keep_their_columns() {
+        for temperature in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            let mut state = metrics_state();
+            state.stats.cpu_temp_celsius = temperature;
+            state.stats.gpu_temp_celsius = temperature;
+            assert_eq!(
+                strip_ansi_codes(&state.metrics_text(21)),
+                " 42%  --C |  73%  --C"
+            );
+        }
     }
 
     #[test]
