@@ -9,8 +9,8 @@ memory, and power sit alongside clickable native Zellij tab ribbons.
 ```
 
 Temperatures are grouped at the end in CPU/GPU order. At 120 columns or fewer,
-tabs use `#1`, `#2`, etc. and metric labels disappear while the metric order stays
-the same:
+the session title and metric labels disappear while tab names and the metric
+order stay the same:
 
 ```text
  42% |  73% |  8.0/16G | 12.3W |  55C/ 62C

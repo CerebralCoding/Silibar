@@ -427,9 +427,7 @@ impl State {
                 } else {
                     tab.name.clone()
                 };
-                if cols <= COMPACT_TERMINAL_MAX_COLS
-                    || tab_ribbon_width(&label, self.simplified_ui) > available_cols
-                {
+                if tab_ribbon_width(&label, self.simplified_ui) > available_cols {
                     format!("#{}", tab.position + 1)
                 } else {
                     label
@@ -453,7 +451,9 @@ impl State {
         let title = tab_bar_title(session_name);
         let mut text = String::new();
         let mut width = 0;
-        if title.chars().count() + widths.iter().sum::<usize>() <= available_cols {
+        if cols > COMPACT_TERMINAL_MAX_COLS
+            && title.chars().count() + widths.iter().sum::<usize>() <= available_cols
+        {
             width = title.chars().count();
             text = title.white().on_black().bold().to_string();
         }
@@ -635,14 +635,17 @@ mod tests {
     }
 
     #[test]
-    fn tab_labels_switch_at_the_metrics_breakpoint() {
+    fn compact_bar_hides_the_title_and_keeps_full_tab_names() {
         let mut state = tabs_state(2, 1);
         let compact = state.combined_bar_text(120);
-        assert!(compact.contains(&inactive_tab_ribbon("#1")));
-        assert!(compact.contains(&active_tab_ribbon("#2")));
+        assert!(compact.starts_with(&inactive_tab_ribbon("Project 1")));
+        assert!(compact.contains(&active_tab_ribbon("Project 2")));
+        assert!(!compact.contains("Zellij"));
         assert!(!compact.contains("CPU:"));
+        assert_eq!(state.tab_click_ranges.first().unwrap().0, 0);
 
         let desktop = state.combined_bar_text(121);
+        assert!(strip_ansi_codes(&desktop).starts_with(" Zellij (macOS) "));
         assert!(desktop.contains(&inactive_tab_ribbon("Project 1")));
         assert!(desktop.contains(&active_tab_ribbon("Project 2")));
         assert!(strip_ansi_codes(&desktop).contains("CPU:"));
@@ -650,17 +653,19 @@ mod tests {
 
     #[test]
     fn four_mobile_tabs_keep_complete_ribbons_and_matching_click_targets() {
-        for cols in [80, 96, 120] {
+        for cols in [96, 110, 120] {
             for simplified_ui in [false, true] {
                 let mut state = tabs_state(4, 3);
                 state.simplified_ui = simplified_ui;
                 state.tabs.reverse();
                 let bar = state.combined_bar_text(cols);
                 assert_eq!(state.tab_click_ranges.len(), 4);
+                assert_eq!(state.tab_click_ranges.first().unwrap().0, 0);
+                assert!(!bar.contains("Zellij"));
                 let mut rendered = strip_ansi_codes(&bar);
-                let ribbon_width = if simplified_ui { 4 } else { 6 };
+                let ribbon_width = if simplified_ui { 11 } else { 13 };
                 for (index, &(start, end, tab)) in state.tab_click_ranges.iter().enumerate() {
-                    let label = format!("#{}", index + 1);
+                    let label = format!("Project {}", index + 1);
                     let ribbon = if index == 3 {
                         active_tab_ribbon(&label)
                     } else {
@@ -686,7 +691,7 @@ mod tests {
 
     #[test]
     fn overflowing_tabs_keep_the_active_tab_visible_without_cutting_ribbons() {
-        for cols in [40, 60, 96, 121] {
+        for (cols, numbered) in [(40, true), (60, false), (96, false), (121, false)] {
             for active in [0, 5, 11] {
                 for simplified_ui in [false, true] {
                     let mut state = tabs_state(12, active);
@@ -701,7 +706,7 @@ mod tests {
                     let mut rendered = strip_ansi_codes(&bar);
                     for &(start, end, index) in &state.tab_click_ranges {
                         let tab = &state.tabs[index as usize - 1];
-                        let label = if cols <= COMPACT_TERMINAL_MAX_COLS {
+                        let label = if numbered {
                             format!("#{index}")
                         } else {
                             tab.name.clone()
