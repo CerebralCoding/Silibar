@@ -456,6 +456,9 @@ impl State {
         {
             width = title.chars().count();
             text = title.white().on_black().bold().to_string();
+        } else if cols <= COMPACT_TERMINAL_MAX_COLS && widths[active] < available_cols {
+            width = 1;
+            text = " ".on_black().to_string();
         }
 
         let mut start = active;
@@ -496,16 +499,23 @@ impl State {
             .unwrap_or(self.active_tab_position.max(1));
         let minimum_tab_width =
             tab_ribbon_width(&format!("#{active_position}"), self.simplified_ui);
+        let right_padding =
+            usize::from(cols <= COMPACT_TERMINAL_MAX_COLS && cols > minimum_tab_width);
+        let content_cols = cols.saturating_sub(right_padding);
         let mut metrics = self.metrics_text(cols);
-        let metrics_budget = cols.saturating_sub(minimum_tab_width + 1);
+        let metrics_budget = content_cols.saturating_sub(minimum_tab_width + 1);
         if visible_width(&metrics) > metrics_budget {
             metrics = self.metrics_text(metrics_budget);
         }
         let available_cols =
-            cols.saturating_sub(visible_width(&metrics) + usize::from(!metrics.is_empty()));
+            content_cols.saturating_sub(visible_width(&metrics) + usize::from(!metrics.is_empty()));
         let (top_left, top_left_width) = self.tab_bar_text(cols, available_cols);
 
-        join_left_right_with_width(&top_left, top_left_width, &metrics, cols)
+        let mut bar = join_left_right_with_width(&top_left, top_left_width, &metrics, content_cols);
+        if right_padding > 0 {
+            bar.push_str(&" ".on_black().to_string());
+        }
+        bar
     }
 
     fn metrics_text(&self, cols: usize) -> String {
@@ -638,11 +648,15 @@ mod tests {
     fn compact_bar_hides_the_title_and_keeps_full_tab_names() {
         let mut state = tabs_state(2, 1);
         let compact = state.combined_bar_text(120);
-        assert!(compact.starts_with(&inactive_tab_ribbon("Project 1")));
+        assert!(
+            strip_ansi_codes(&compact)
+                .starts_with(&format!(" {}", inactive_tab_ribbon("Project 1")))
+        );
         assert!(compact.contains(&active_tab_ribbon("Project 2")));
         assert!(!compact.contains("Zellij"));
         assert!(!compact.contains("CPU:"));
-        assert_eq!(state.tab_click_ranges.first().unwrap().0, 0);
+        assert_eq!(state.tab_click_ranges.first().unwrap().0, 1);
+        assert_eq!(tab_at_column(&state.tab_click_ranges, 0), None);
 
         let desktop = state.combined_bar_text(121);
         assert!(strip_ansi_codes(&desktop).starts_with(" Zellij (macOS) "));
@@ -653,14 +667,15 @@ mod tests {
 
     #[test]
     fn four_mobile_tabs_keep_complete_ribbons_and_matching_click_targets() {
-        for cols in [96, 110, 120] {
+        for cols in [97, 110, 120] {
             for simplified_ui in [false, true] {
                 let mut state = tabs_state(4, 3);
                 state.simplified_ui = simplified_ui;
                 state.tabs.reverse();
                 let bar = state.combined_bar_text(cols);
                 assert_eq!(state.tab_click_ranges.len(), 4);
-                assert_eq!(state.tab_click_ranges.first().unwrap().0, 0);
+                assert_eq!(state.tab_click_ranges.first().unwrap().0, 1);
+                assert_eq!(tab_at_column(&state.tab_click_ranges, 0), None);
                 assert!(!bar.contains("Zellij"));
                 let mut rendered = strip_ansi_codes(&bar);
                 let ribbon_width = if simplified_ui { 11 } else { 13 };
@@ -680,7 +695,10 @@ mod tests {
                 }
                 assert!(!rendered.contains('\u{1b}'));
                 assert_eq!(rendered.chars().count(), cols);
-                assert!(rendered.ends_with(&strip_ansi_codes(&state.metrics_text(cols))));
+                assert!(
+                    rendered
+                        .ends_with(&format!("{} ", strip_ansi_codes(&state.metrics_text(cols))))
+                );
                 let last_end = state.tab_click_ranges.last().unwrap().1;
                 for column in last_end..cols {
                     assert_eq!(tab_at_column(&state.tab_click_ranges, column), None);
@@ -816,7 +834,7 @@ mod tests {
     fn combined_bar_uses_compact_metrics_on_mobile_widths() {
         let bar = strip_ansi_codes(&metrics_state().combined_bar_text(96));
 
-        assert!(bar.ends_with(" 42% |  73% |  8.0/16G | 12.3W |  55C/ 62C"));
+        assert!(bar.ends_with(" 42% |  73% |  8.0/16G | 12.3W |  55C/ 62C "));
         assert!(!bar.contains("CPU:"));
     }
 
@@ -891,7 +909,7 @@ mod tests {
             "a very long tab name that consumes the available gap".to_string();
 
         let desktop_metrics = strip_ansi_codes(&short_tab.metrics_text(160));
-        let mobile_metrics = strip_ansi_codes(&short_tab.metrics_text(96));
+        let mobile_metrics = format!("{} ", strip_ansi_codes(&short_tab.metrics_text(96)));
 
         assert!(strip_ansi_codes(&short_tab.combined_bar_text(160)).ends_with(&desktop_metrics));
         assert!(strip_ansi_codes(&long_tab.combined_bar_text(160)).ends_with(&desktop_metrics));
