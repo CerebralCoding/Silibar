@@ -174,30 +174,10 @@ fn mode_name(mode: InputMode) -> String {
 
 fn join_left_right_with_width(left: &str, left_width: usize, right: &str, cols: usize) -> String {
     let right_width = visible_width(right);
-
-    if right_width >= cols {
-        return right.to_string();
-    }
-
-    if left_width + right_width < cols {
-        return format!(
-            "{}{}{}",
-            left,
-            " ".repeat(cols.saturating_sub(left_width + right_width))
-                .on_black(),
-            right
-        );
-    }
-
-    let available_left = cols.saturating_sub(right_width + 1);
-    let truncated_left: String = strip_ansi_codes(left)
-        .chars()
-        .take(available_left)
-        .collect();
     format!(
         "{}{}{}",
-        truncated_left,
-        " ".repeat(cols.saturating_sub(visible_width(&truncated_left) + right_width))
+        left,
+        " ".repeat(cols.saturating_sub(left_width + right_width))
             .on_black(),
         right
     )
@@ -325,6 +305,7 @@ impl ZellijPlugin for State {
         should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
+        self.tab_click_ranges.clear();
         if cols == 0 {
             return;
         }
@@ -334,12 +315,6 @@ impl ZellijPlugin for State {
             return;
         }
 
-        let session_name = if self.session_name.is_empty() {
-            "macOS".to_string()
-        } else {
-            self.session_name.clone()
-        };
-        self.tab_click_ranges = self.tab_click_ranges(&session_name);
         let bar = self.combined_bar_text(cols);
 
         if rows >= 2 {
@@ -432,70 +407,103 @@ impl State {
         None
     }
 
-    fn tab_bar_text(&self, session_name: &str) -> (String, usize) {
-        let title = tab_bar_title(session_name);
-        let mut text = format!("{}", title.white().on_black().bold());
-        let mut width = title.chars().count();
+    fn tab_bar_text(&mut self, cols: usize, available_cols: usize) -> (String, usize) {
+        self.tab_click_ranges.clear();
         let mut tabs = self.tabs.clone();
         tabs.sort_by_key(|tab| tab.position);
-
         if tabs.is_empty() {
-            let tab_name = if self.active_tab_name.is_empty() {
-                format!("Tab #{}", self.active_tab_position.max(1))
-            } else {
-                self.active_tab_name.clone()
-            };
-            text.push_str(&active_tab_ribbon(&tab_name));
-            width += tab_ribbon_width(&tab_name, self.simplified_ui);
-            return (text, width);
+            tabs.push(TabInfo {
+                name: self.active_tab_name.clone(),
+                position: self.active_tab_position.max(1) - 1,
+                active: true,
+                ..Default::default()
+            });
+        }
+        let labels: Vec<String> = tabs
+            .iter()
+            .map(|tab| {
+                let label = if tab.name.is_empty() {
+                    format!("Tab #{}", tab.position + 1)
+                } else {
+                    tab.name.clone()
+                };
+                if cols <= COMPACT_TERMINAL_MAX_COLS
+                    || tab_ribbon_width(&label, self.simplified_ui) > available_cols
+                {
+                    format!("#{}", tab.position + 1)
+                } else {
+                    label
+                }
+            })
+            .collect();
+        let widths: Vec<usize> = labels
+            .iter()
+            .map(|label| tab_ribbon_width(label, self.simplified_ui))
+            .collect();
+        let active = tabs.iter().position(|tab| tab.active).unwrap_or(0);
+        if widths[active] > available_cols {
+            return (String::new(), 0);
         }
 
-        for tab in &tabs {
-            let label = if tab.name.is_empty() {
-                format!("Tab #{}", tab.position + 1)
-            } else {
-                tab.name.clone()
-            };
-
-            if tab.active {
-                text.push_str(&active_tab_ribbon(&label));
-            } else {
-                text.push_str(&inactive_tab_ribbon(&label));
-            }
-            width += tab_ribbon_width(&label, self.simplified_ui);
-        }
-
-        (text, width)
-    }
-
-    fn tab_click_ranges(&self, session_name: &str) -> Vec<(usize, usize, u32)> {
-        let mut column = tab_bar_title(session_name).chars().count();
-        let mut ranges = Vec::new();
-        let mut tabs = self.tabs.clone();
-        tabs.sort_by_key(|tab| tab.position);
-
-        for tab in tabs {
-            let label = if tab.name.is_empty() {
-                format!("Tab #{}", tab.position + 1)
-            } else {
-                tab.name
-            };
-            let end = column + tab_ribbon_width(&label, self.simplified_ui);
-            ranges.push((column, end, (tab.position + 1) as u32));
-            column = end;
-        }
-
-        ranges
-    }
-
-    fn combined_bar_text(&self, cols: usize) -> String {
         let session_name = if self.session_name.is_empty() {
             "macOS"
         } else {
             &self.session_name
         };
-        let (top_left, top_left_width) = self.tab_bar_text(session_name);
-        let metrics = self.metrics_text(cols);
+        let title = tab_bar_title(session_name);
+        let mut text = String::new();
+        let mut width = 0;
+        if title.chars().count() + widths.iter().sum::<usize>() <= available_cols {
+            width = title.chars().count();
+            text = title.white().on_black().bold().to_string();
+        }
+
+        let mut start = active;
+        let mut end = active + 1;
+        let mut used = width + widths[active];
+        while start > 0 && used + widths[start - 1] <= available_cols {
+            start -= 1;
+            used += widths[start];
+        }
+        while end < tabs.len() && used + widths[end] <= available_cols {
+            used += widths[end];
+            end += 1;
+        }
+
+        for index in start..end {
+            let tab = &tabs[index];
+            let label = &labels[index];
+            text.push_str(&if tab.active {
+                active_tab_ribbon(label)
+            } else {
+                inactive_tab_ribbon(label)
+            });
+            let end_column = width + widths[index];
+            self.tab_click_ranges
+                .push((width, end_column, (tab.position + 1) as u32));
+            width = end_column;
+        }
+
+        (text, width)
+    }
+
+    fn combined_bar_text(&mut self, cols: usize) -> String {
+        let active_position = self
+            .tabs
+            .iter()
+            .find(|tab| tab.active)
+            .map(|tab| tab.position + 1)
+            .unwrap_or(self.active_tab_position.max(1));
+        let minimum_tab_width =
+            tab_ribbon_width(&format!("#{active_position}"), self.simplified_ui);
+        let mut metrics = self.metrics_text(cols);
+        let metrics_budget = cols.saturating_sub(minimum_tab_width + 1);
+        if visible_width(&metrics) > metrics_budget {
+            metrics = self.metrics_text(metrics_budget);
+        }
+        let available_cols =
+            cols.saturating_sub(visible_width(&metrics) + usize::from(!metrics.is_empty()));
+        let (top_left, top_left_width) = self.tab_bar_text(cols, available_cols);
 
         join_left_right_with_width(&top_left, top_left_width, &metrics, cols)
     }
@@ -612,6 +620,140 @@ mod tests {
         }
     }
 
+    fn tabs_state(count: usize, active: usize) -> State {
+        State {
+            tabs: (0..count)
+                .map(|position| TabInfo {
+                    position,
+                    name: format!("Project {}", position + 1),
+                    active: position == active,
+                    ..Default::default()
+                })
+                .collect(),
+            ..metrics_state()
+        }
+    }
+
+    #[test]
+    fn tab_labels_switch_at_the_metrics_breakpoint() {
+        let mut state = tabs_state(2, 1);
+        let compact = state.combined_bar_text(120);
+        assert!(compact.contains(&inactive_tab_ribbon("#1")));
+        assert!(compact.contains(&active_tab_ribbon("#2")));
+        assert!(!compact.contains("CPU:"));
+
+        let desktop = state.combined_bar_text(121);
+        assert!(desktop.contains(&inactive_tab_ribbon("Project 1")));
+        assert!(desktop.contains(&active_tab_ribbon("Project 2")));
+        assert!(strip_ansi_codes(&desktop).contains("CPU:"));
+    }
+
+    #[test]
+    fn four_mobile_tabs_keep_complete_ribbons_and_matching_click_targets() {
+        for cols in [80, 96, 120] {
+            for simplified_ui in [false, true] {
+                let mut state = tabs_state(4, 3);
+                state.simplified_ui = simplified_ui;
+                state.tabs.reverse();
+                let bar = state.combined_bar_text(cols);
+                assert_eq!(state.tab_click_ranges.len(), 4);
+                let mut rendered = strip_ansi_codes(&bar);
+                let ribbon_width = if simplified_ui { 4 } else { 6 };
+                for (index, &(start, end, tab)) in state.tab_click_ranges.iter().enumerate() {
+                    let label = format!("#{}", index + 1);
+                    let ribbon = if index == 3 {
+                        active_tab_ribbon(&label)
+                    } else {
+                        inactive_tab_ribbon(&label)
+                    };
+                    assert!(bar.contains(&ribbon));
+                    assert_eq!(tab, (index + 1) as u32);
+                    assert_eq!(end - start, ribbon_width);
+                    assert_eq!(tab_at_column(&state.tab_click_ranges, start), Some(tab));
+                    assert_eq!(tab_at_column(&state.tab_click_ranges, end - 1), Some(tab));
+                    rendered = rendered.replace(&ribbon, &" ".repeat(ribbon_width));
+                }
+                assert!(!rendered.contains('\u{1b}'));
+                assert_eq!(rendered.chars().count(), cols);
+                assert!(rendered.ends_with(&strip_ansi_codes(&state.metrics_text(cols))));
+                let last_end = state.tab_click_ranges.last().unwrap().1;
+                for column in last_end..cols {
+                    assert_eq!(tab_at_column(&state.tab_click_ranges, column), None);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn overflowing_tabs_keep_the_active_tab_visible_without_cutting_ribbons() {
+        for cols in [40, 60, 96, 121] {
+            for active in [0, 5, 11] {
+                for simplified_ui in [false, true] {
+                    let mut state = tabs_state(12, active);
+                    state.simplified_ui = simplified_ui;
+                    let bar = state.combined_bar_text(cols);
+                    assert!(
+                        state
+                            .tab_click_ranges
+                            .iter()
+                            .any(|&(_, _, tab)| tab == (active + 1) as u32)
+                    );
+                    let mut rendered = strip_ansi_codes(&bar);
+                    for &(start, end, index) in &state.tab_click_ranges {
+                        let tab = &state.tabs[index as usize - 1];
+                        let label = if cols <= COMPACT_TERMINAL_MAX_COLS {
+                            format!("#{index}")
+                        } else {
+                            tab.name.clone()
+                        };
+                        let ribbon = if tab.active {
+                            active_tab_ribbon(&label)
+                        } else {
+                            inactive_tab_ribbon(&label)
+                        };
+                        assert!(bar.contains(&ribbon));
+                        assert!(start < end && end <= cols);
+                        assert_eq!(tab_at_column(&state.tab_click_ranges, start), Some(index));
+                        assert_eq!(tab_at_column(&state.tab_click_ranges, end - 1), Some(index));
+                        rendered = rendered.replace(&ribbon, &" ".repeat(end - start));
+                    }
+                    assert!(!rendered.contains('\u{1b}'));
+                    assert_eq!(rendered.chars().count(), cols);
+                    assert_eq!(
+                        bar.matches("\u{1b}Pzribbon;").count(),
+                        state.tab_click_ranges.len()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn resizing_clears_hidden_tab_click_targets() {
+        let mut state = tabs_state(12, 11);
+        state.combined_bar_text(160);
+        assert!(!state.tab_click_ranges.is_empty());
+
+        let bar = state.combined_bar_text(7);
+        assert_eq!(strip_ansi_codes(&bar), active_tab_ribbon("#12"));
+        assert_eq!(state.tab_click_ranges, [(0, 7, 12)]);
+
+        assert_eq!(state.combined_bar_text(3), "   ".on_black().to_string());
+        assert!(state.tab_click_ranges.is_empty());
+        assert_eq!(strip_ansi_codes(&state.combined_bar_text(0)), "");
+    }
+
+    #[test]
+    fn oversized_names_fall_back_to_a_complete_numbered_tab() {
+        let mut state = tabs_state(1, 0);
+        state.session_name = "session".repeat(30);
+        state.tabs[0].name = "project".repeat(30);
+        let bar = state.combined_bar_text(121);
+        assert!(bar.starts_with(&active_tab_ribbon("#1")));
+        assert!(strip_ansi_codes(&bar).ends_with(&strip_ansi_codes(&state.metrics_text(121))));
+        assert_eq!(state.tab_click_ranges, [(0, 6, 1)]);
+    }
+
     #[test]
     fn wide_metrics_are_labelled_and_put_gpu_before_ram() {
         let metrics = strip_ansi_codes(&metrics_state().metrics_text(121));
@@ -658,7 +800,7 @@ mod tests {
 
     #[test]
     fn combined_bar_uses_regular_metrics_on_desktop_widths() {
-        let state = metrics_state();
+        let mut state = metrics_state();
         let regular = strip_ansi_codes(&state.metrics_text(usize::MAX));
         let bar = strip_ansi_codes(&state.combined_bar_text(160));
 
@@ -738,7 +880,7 @@ mod tests {
 
     #[test]
     fn tab_section_width_does_not_change_the_metrics_format() {
-        let short_tab = metrics_state();
+        let mut short_tab = metrics_state();
         let mut long_tab = metrics_state();
         long_tab.active_tab_name =
             "a very long tab name that consumes the available gap".to_string();
