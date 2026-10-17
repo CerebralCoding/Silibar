@@ -499,8 +499,7 @@ impl State {
             .unwrap_or(self.active_tab_position.max(1));
         let minimum_tab_width =
             tab_ribbon_width(&format!("#{active_position}"), self.simplified_ui);
-        let right_padding =
-            usize::from(cols <= COMPACT_TERMINAL_MAX_COLS && cols > minimum_tab_width);
+        let right_padding = usize::from(cols > minimum_tab_width);
         let content_cols = cols.saturating_sub(right_padding);
         let mut metrics = self.metrics_text(cols);
         let metrics_budget = content_cols.saturating_sub(minimum_tab_width + 1);
@@ -773,7 +772,10 @@ mod tests {
         state.tabs[0].name = "project".repeat(30);
         let bar = state.combined_bar_text(121);
         assert!(bar.starts_with(&active_tab_ribbon("#1")));
-        assert!(strip_ansi_codes(&bar).ends_with(&strip_ansi_codes(&state.metrics_text(121))));
+        assert!(
+            strip_ansi_codes(&bar)
+                .ends_with(&format!("{} ", strip_ansi_codes(&state.metrics_text(121))))
+        );
         assert_eq!(state.tab_click_ranges, [(0, 6, 1)]);
     }
 
@@ -827,7 +829,7 @@ mod tests {
         let regular = strip_ansi_codes(&state.metrics_text(usize::MAX));
         let bar = strip_ansi_codes(&state.combined_bar_text(160));
 
-        assert!(bar.ends_with(&regular));
+        assert!(bar.ends_with(&format!("{regular} ")));
     }
 
     #[test]
@@ -908,7 +910,7 @@ mod tests {
         long_tab.active_tab_name =
             "a very long tab name that consumes the available gap".to_string();
 
-        let desktop_metrics = strip_ansi_codes(&short_tab.metrics_text(160));
+        let desktop_metrics = format!("{} ", strip_ansi_codes(&short_tab.metrics_text(160)));
         let mobile_metrics = format!("{} ", strip_ansi_codes(&short_tab.metrics_text(96)));
 
         assert!(strip_ansi_codes(&short_tab.combined_bar_text(160)).ends_with(&desktop_metrics));
