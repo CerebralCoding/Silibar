@@ -2,10 +2,10 @@
 
 An Apple Silicon metrics and tab bar for [Zellij](https://zellij.dev), powered by
 [macmon](https://github.com/vladkens/macmon). CPU and GPU usage and temperatures,
-ANE power, memory, and system power sit alongside clickable native Zellij tab ribbons.
+memory, and power sit alongside clickable native Zellij tab ribbons.
 
 ```text
- Zellij (work)  Tab #1                         CPU:  42% | GPU:  73% | ANE:  2.5W | RAM:  8.0/16G | PWR: 12.3W | TEMP:  55C/ 62C
+ Zellij (work)  Tab #1                         CPU:  42% | GPU:  73% | RAM:  8.0/16G | PWR: 12.3W | TEMP:  55C/ 62C
 ```
 
 Temperatures are grouped at the end in CPU/GPU order. At 120 columns or fewer,
@@ -13,7 +13,7 @@ the session title and metric labels disappear while tab names and the metric
 order stay the same:
 
 ```text
- 42% |  73% |  2.5W |  8.0/16G | 12.3W |  55C/ 62C
+ 42% |  73% |  8.0/16G | 12.3W |  55C/ 62C
 ```
 
 Silibar polls macmon's local HTTP server once per second. Sampling runs outside

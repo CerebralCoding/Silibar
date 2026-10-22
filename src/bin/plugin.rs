@@ -552,9 +552,6 @@ impl State {
         let gpu_value = format!("{gpu_pct:>3.0}%");
         segments.push(metric_segment("GPU:", &gpu_value, compact));
 
-        let ane_value = format!("{:>4.1}W", self.stats.ane_power_watts);
-        segments.push(metric_segment("ANE:", &ane_value, compact));
-
         let mem_used_gb = self.stats.mem_used as f64 / 1024.0 / 1024.0 / 1024.0;
         let mem_total_gb = self.stats.mem_total as f64 / 1024.0 / 1024.0 / 1024.0;
         let memory_value = format!("{mem_used_gb:>4.1}/{mem_total_gb:.0}G");
@@ -621,7 +618,6 @@ mod tests {
             stats: SystemMessage {
                 cpu_usage: 42.0,
                 gpu_usage: 73.0,
-                ane_power_watts: 2.5,
                 mem_used: 8 * 1024 * 1024 * 1024,
                 mem_total: 16 * 1024 * 1024 * 1024,
                 system_power_watts: 12.3,
@@ -650,13 +646,12 @@ mod tests {
     #[test]
     fn compact_bar_hides_the_title_and_keeps_full_tab_names() {
         let mut state = tabs_state(2, 1);
-        state.tabs[0].name = "Work".to_string();
-        state.tabs[1].name = "Logs".to_string();
         let compact = state.combined_bar_text(120);
         assert!(
-            strip_ansi_codes(&compact).starts_with(&format!(" {}", inactive_tab_ribbon("Work")))
+            strip_ansi_codes(&compact)
+                .starts_with(&format!(" {}", inactive_tab_ribbon("Project 1")))
         );
-        assert!(compact.contains(&active_tab_ribbon("Logs")));
+        assert!(compact.contains(&active_tab_ribbon("Project 2")));
         assert!(!compact.contains("Zellij"));
         assert!(!compact.contains("CPU:"));
         assert_eq!(state.tab_click_ranges.first().unwrap().0, 1);
@@ -664,14 +659,14 @@ mod tests {
 
         let desktop = state.combined_bar_text(121);
         assert!(strip_ansi_codes(&desktop).starts_with(" Zellij (macOS) "));
-        assert!(desktop.contains(&inactive_tab_ribbon("Work")));
-        assert!(desktop.contains(&active_tab_ribbon("Logs")));
+        assert!(desktop.contains(&inactive_tab_ribbon("Project 1")));
+        assert!(desktop.contains(&active_tab_ribbon("Project 2")));
         assert!(strip_ansi_codes(&desktop).contains("CPU:"));
     }
 
     #[test]
     fn four_mobile_tabs_keep_complete_ribbons_and_matching_click_targets() {
-        for cols in [105, 110, 120] {
+        for cols in [97, 110, 120] {
             for simplified_ui in [false, true] {
                 let mut state = tabs_state(4, 3);
                 state.simplified_ui = simplified_ui;
@@ -713,7 +708,7 @@ mod tests {
 
     #[test]
     fn overflowing_tabs_keep_the_active_tab_visible_without_cutting_ribbons() {
-        for (cols, numbered) in [(40, true), (68, false), (96, false), (121, false)] {
+        for (cols, numbered) in [(40, true), (60, false), (96, false), (121, false)] {
             for active in [0, 5, 11] {
                 for simplified_ui in [false, true] {
                     let mut state = tabs_state(12, active);
@@ -785,21 +780,18 @@ mod tests {
     }
 
     #[test]
-    fn wide_metrics_are_labelled_and_put_ane_between_gpu_and_ram() {
+    fn wide_metrics_are_labelled_and_put_gpu_before_ram() {
         let metrics = strip_ansi_codes(&metrics_state().metrics_text(121));
         assert_eq!(
             metrics,
-            "CPU:  42% | GPU:  73% | ANE:  2.5W | RAM:  8.0/16G | PWR: 12.3W | TEMP:  55C/ 62C"
+            "CPU:  42% | GPU:  73% | RAM:  8.0/16G | PWR: 12.3W | TEMP:  55C/ 62C"
         );
     }
 
     #[test]
     fn narrow_metrics_automatically_compact() {
         let metrics = strip_ansi_codes(&metrics_state().metrics_text(96));
-        assert_eq!(
-            metrics,
-            " 42% |  73% |  2.5W |  8.0/16G | 12.3W |  55C/ 62C"
-        );
+        assert_eq!(metrics, " 42% |  73% |  8.0/16G | 12.3W |  55C/ 62C");
     }
 
     #[test]
@@ -810,7 +802,7 @@ mod tests {
         assert_eq!(strip_ansi_codes(&state.metrics_text(121)), regular);
         assert_eq!(
             strip_ansi_codes(&state.metrics_text(120)),
-            " 42% |  73% |  2.5W |  8.0/16G | 12.3W |  55C/ 62C"
+            " 42% |  73% |  8.0/16G | 12.3W |  55C/ 62C"
         );
     }
 
@@ -821,18 +813,13 @@ mod tests {
         assert_eq!(strip_ansi_codes(&state.metrics_text(4)), " 42%");
         assert_eq!(strip_ansi_codes(&state.metrics_text(10)), " 42%");
         assert_eq!(strip_ansi_codes(&state.metrics_text(11)), " 42% |  73%");
-        assert_eq!(strip_ansi_codes(&state.metrics_text(18)), " 42% |  73%");
         assert_eq!(
-            strip_ansi_codes(&state.metrics_text(19)),
-            " 42% |  73% |  2.5W"
+            strip_ansi_codes(&state.metrics_text(41)),
+            " 42% |  73% |  8.0/16G | 12.3W"
         );
         assert_eq!(
-            strip_ansi_codes(&state.metrics_text(49)),
-            " 42% |  73% |  2.5W |  8.0/16G | 12.3W"
-        );
-        assert_eq!(
-            strip_ansi_codes(&state.metrics_text(50)),
-            " 42% |  73% |  2.5W |  8.0/16G | 12.3W |  55C/ 62C"
+            strip_ansi_codes(&state.metrics_text(42)),
+            " 42% |  73% |  8.0/16G | 12.3W |  55C/ 62C"
         );
     }
 
@@ -849,7 +836,7 @@ mod tests {
     fn combined_bar_uses_compact_metrics_on_mobile_widths() {
         let bar = strip_ansi_codes(&metrics_state().combined_bar_text(96));
 
-        assert!(bar.ends_with(" 42% |  73% |  2.5W |  8.0/16G | 12.3W |  55C/ 62C "));
+        assert!(bar.ends_with(" 42% |  73% |  8.0/16G | 12.3W |  55C/ 62C "));
         assert!(!bar.contains("CPU:"));
     }
 
@@ -858,7 +845,6 @@ mod tests {
         let mut low = metrics_state();
         low.stats.cpu_usage = 9.0;
         low.stats.gpu_usage = 9.0;
-        low.stats.ane_power_watts = 9.9;
         low.stats.mem_used = 9 * 1024 * 1024 * 1024;
         low.stats.system_power_watts = 9.9;
         low.stats.cpu_temp_celsius = 9.0;
@@ -867,7 +853,6 @@ mod tests {
         let mut high = metrics_state();
         high.stats.cpu_usage = 100.0;
         high.stats.gpu_usage = 100.0;
-        high.stats.ane_power_watts = 10.0;
         high.stats.mem_used = 10 * 1024 * 1024 * 1024;
         high.stats.system_power_watts = 10.0;
         high.stats.cpu_temp_celsius = 100.0;
@@ -877,37 +862,8 @@ mod tests {
         let high_metrics = strip_ansi_codes(&high.metrics_text(96));
 
         assert_eq!(low_metrics.chars().count(), high_metrics.chars().count());
-        assert_eq!(
-            low_metrics,
-            "  9% |   9% |  9.9W |  9.0/16G |  9.9W |   9C/  9C"
-        );
-        assert_eq!(
-            high_metrics,
-            "100% | 100% | 10.0W | 10.0/16G | 10.0W | 100C/100C"
-        );
-    }
-
-    #[test]
-    fn macmon_ane_power_renders_in_watts() {
-        colored::control::set_override(true);
-        for (json, expected) in [
-            (r#"{"ane_power":0.0}"#, " 0.0W"),
-            (r#"{"ane_power":2.5}"#, " 2.5W"),
-        ] {
-            let snapshot: MacmonSnapshot = serde_json::from_str(json).unwrap();
-            let state = State {
-                stats: snapshot.into(),
-                ..Default::default()
-            };
-            assert!(
-                strip_ansi_codes(&state.metrics_text(121))
-                    .contains(&format!("GPU:   0% | ANE: {expected} | RAM:"))
-            );
-            assert!(
-                strip_ansi_codes(&state.metrics_text(120))
-                    .starts_with(&format!("  0% |   0% | {expected} |"))
-            );
-        }
+        assert_eq!(low_metrics, "  9% |   9% |  9.0/16G |  9.9W |   9C/  9C");
+        assert_eq!(high_metrics, "100% | 100% | 10.0/16G | 10.0W | 100C/100C");
     }
 
     #[test]
@@ -942,7 +898,7 @@ mod tests {
             state.stats.gpu_temp_celsius = temperature;
             assert_eq!(
                 strip_ansi_codes(&state.metrics_text(96)),
-                " 42% |  73% |  2.5W |  8.0/16G | 12.3W |  --C/ --C"
+                " 42% |  73% |  8.0/16G | 12.3W |  --C/ --C"
             );
         }
     }
